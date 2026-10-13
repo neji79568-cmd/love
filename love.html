@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Love Heart ❤️</title>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            background: #060208;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: Arial, sans-serif;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            touch-action: none;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="heart"></canvas>
+
+    <script>
+        const canvas = document.getElementById("heart");
+        const ctx = canvas.getContext("2d");
+
+        const PHRASES = [
+            "I love you",
+            "Seni seviyorum",
+            "Te amo",
+            "Je t'aime",
+            "Ich liebe dich",
+            "Ti amo",
+            "Eu te amo",
+            "Я тебя люблю",
+            "사랑해",
+            "愛してる",
+            "我爱你",
+            "मैं तुमसे प्यार करता हूँ",
+            "Σ' αγαπώ",
+            "Ik hou van jou",
+            "Jag älskar dig",
+            "Kocham cię",
+            "ฉันรักเธอ",
+            "Anh yêu em",
+            "Aku cinta kamu",
+            "Я тебе кохаю"
+        ];
+
+        const BG = "#060208";
+        const DURATION = 10000;
+        const ANIMATION_TIME = 700;
+        const GAP = 7;
+
+        let words = [];
+        let startTime = 0;
+        let lastTime = 0;
+        let shimmerTime = 0;
+        let width = 0;
+        let height = 0;
+        let scale = 1;
+
+        const random = (() => {
+            let seed = 11;
+            return () => {
+                seed = (1664525 * seed + 1013904223) >>> 0;
+                return seed / 4294967296;
+            };
+        })();
+
+        function rand(a, b) {
+            return a + random() * (b - a);
+        }
+
+        function heart(t) {
+            const x = 16 * Math.pow(Math.sin(t), 3);
+            const y =
+                13 * Math.cos(t) -
+                5 * Math.cos(2 * t) -
+                2 * Math.cos(3 * t) -
+                Math.cos(4 * t);
+
+            return { x, y };
+        }
+
+        function clamp(x) {
+            return Math.max(0, Math.min(1, x));
+        }
+
+        function mix(a, b, t) {
+            return a.map((v, i) => v + (b[i] - v) * t);
+        }
+
+        function rgb(c) {
+            return `rgb(${c.map(v =>
+                Math.round(clamp(v) * 255)
+            ).join(",")})`;
+        }
+
+        const wine = [0.58, 0, 0.09];
+        const crimson = [0.90, 0.05, 0.14];
+        const blood = [0.98, 0.10, 0.16];
+        const flash = [1, 0.78, 0.78];
+
+        function font(size) {
+            return `bold ${size}px Arial, sans-serif`;
+        }
+
+        function getSpans(y, polygon) {
+            const xs = [];
+
+            for (let i = 0; i < polygon.length; i++) {
+                const a = polygon[i];
+                const b = polygon[(i + 1) % polygon.length];
+
+                if (
+                    (a.y <= y && y < b.y) ||
+                    (b.y <= y && y < a.y)
+                ) {
+                    const x = a.x +
+                        (y - a.y) * (b.x - a.x) / (b.y - a.y);
+
+                    xs.push(x);
+                }
+            }
+
+            xs.sort((a, b) => a - b);
+
+            const result = [];
+            for (let i = 0; i + 1 < xs.length; i += 2) {
+                result.push([xs[i], xs[i + 1]]);
+            }
+
+            return result;
+        }
+
+        function intersect(a, b) {
+            const result = [];
+
+            for (const x of a) {
+                for (const y of b) {
+                    const lo = Math.max(x[0], y[0]);
+                    const hi = Math.min(x[1], y[1]);
+
+                    if (hi - lo > 14 * scale) {
+                        result.push([lo, hi]);
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        function buildHeart() {
+            words = [];
+
+            const polygon = [];
+
+            for (let i = 0; i < 720; i++) {
+                const p = heart(2 * Math.PI * i / 720);
+                polygon.push({
+                    x: p.x * scale,
+                    y: -p.y * scale
+                });
+            }
+
+            const minY = Math.min(...polygon.map(p => p.y));
+            const maxY = Math.max(...polygon.map(p => p.y));
+            const centerY = (minY + maxY) / 2;
+
+            const sizes = [9, 10, 11, 12].map(v => v * scale);
+            const rowHeight = 20 * scale;
+            const half = rowHeight / 2;
+
+            let y = minY + half;
+            let phraseIndex = 0;
+
+            let shuffled = [...PHRASES];
+
+            function shuffle() {
+                for (let i = shuffled.length - 1; i > 0; i--) {
+                    const j = Math.floor(random() * (i + 1));
+                    [shuffled[i], shuffled[j]] =
+                        [shuffled[j], shuffled[i]];
+                }
+            }
+
+            shuffle();
+
+            function nextPhrase() {
+                if (phraseIndex >= shuffled.length) {
+                    shuffle();
+                    phraseIndex = 0;
+                }
+                return shuffled[phraseIndex++];
+            }
+
+            while (y < maxY - half) {
+                const spans = intersect(
+                    getSpans(y - half, polygon),
+                    getSpans(y + half, polygon)
+                );
+
+                for (let [lo, hi] of spans) {
+                    lo += 4 * scale;
+                    hi -= 4 * scale;
+
+                    let current = lo + rand(0, 8 * scale);
+                    const line = [];
+
+                    while (true) {
+                        let fitted = null;
+
+                        for (let attempt = 0; attempt < 10; attempt++) {
+                            const text = nextPhrase();
+                            const size = sizes[
+                                Math.floor(random() * sizes.length)
+                            ];
+
+                            ctx.font = font(size);
+                            const textWidth = ctx.measureText(text).width;
+
+                            if (current + textWidth <= hi) {
+                                fitted = { text, size, width: textWidth };
+                                break;
+                            }
+                        }
+
+                        if (!fitted) break;
+
+                        line.push({
+                            x: current + fitted.width / 2,
+                            y,
+                            ...fitted
+                        });
+
+                        current += fitted.width + GAP * scale;
+                    }
+
+                    if (line.length === 0) continue;
+
+                    if (line.length > 1) {
+                        const right =
+                            line[line.length - 1].x +
+                            line[line.length - 1].width / 2;
+
+                        const extra = hi - right;
+
+                        line.forEach((p, i) => {
+                            p.x += extra * i / (line.length - 1);
+                        });
+                    } else {
+                        line[0].x = (lo + hi) / 2;
+                    }
+
+                    line.forEach((p, i) => {
+                        const edge = i === 0 || i === line.length - 1;
+
+                        const radius = clamp(Math.hypot(
+                            p.x / (16 * scale),
+                            (p.y - centerY) / (14.5 * scale)
+                        ));
+
+                        let color = mix(
+                            wine,
+                            crimson,
+                            0.25 + 0.75 * radius
+                        );
+
+                        color = mix(
+                            color,
+                            blood,
+                            clamp(rand(0, 0.35) + (edge ? 0.3 : 0))
+                        );
+
+                        words.push({
+                            ...p,
+                            edge,
+                            radius,
+                            color,
+                            dx: rand(-10, 10) * scale,
+                            sparkle: 0,
+                            delay: 0
+                        });
+                    });
+                }
+
+                y += rowHeight;
+            }
+
+            const edges = words.filter(p => p.edge);
+            const inner = words.filter(p => !p.edge);
+
+            edges.sort((a, b) => {
+                const angleA = (
+                    Math.atan2(a.x, centerY - a.y) +
+                    Math.PI * 2
+                ) % (Math.PI * 2);
+
+                const angleB = (
+                    Math.atan2(b.x, centerY - b.y) +
+                    Math.PI * 2
+                ) % (Math.PI * 2);
+
+                return angleA - angleB;
+            });
+
+            inner.sort((a, b) =>
+                (b.radius + rand(0, 0.08)) -
+                (a.radius + rand(0, 0.08))
+            );
+
+            words = [...edges, ...inner];
+
+            words.forEach((p, i) => {
+                p.delay = i / Math.max(1, words.length - 1) * DURATION;
+            });
+        }
+
+        function resize() {
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+            width = window.innerWidth;
+            height = window.innerHeight;
+
+            canvas.width = Math.round(width * dpr);
+            canvas.height = Math.round(height * dpr);
+
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+            scale = Math.min(
+                width / 800,
+                height / 800
+            ) * 21;
+
+            buildHeart();
+
+            startTime = performance.now();
+            lastTime = startTime;
+            shimmerTime = startTime;
+        }
+
+        function drawWord(p, elapsed) {
+            const age = elapsed - p.delay;
+            if (age < 0) return;
+
+            const u = clamp(age / ANIMATION_TIME);
+            const ease = 1 - Math.pow(1 - u, 3);
+
+            const x = p.x + p.dx * (1 - ease);
+            const y = p.y - 34 * scale / 21 * (1 - ease);
+
+            const alpha = Math.pow(ease, 1.5);
+
+            const pulse = u < 1
+                ? 0.75 * Math.sin(
+                    Math.PI * clamp((u - 0.55) / 0.45)
+                )
+                : 0;
+
+            let color = mix(
+                [0.024, 0.008, 0.031],
+                p.color,
+                alpha
+            );
+
+            color = mix(color, flash, pulse);
+
+            if (p.sparkle > 0) {
+                color = mix(color, flash, p.sparkle * 0.65);
+            }
+
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.font = font(p.size);
+
+            ctx.shadowColor = rgb(p.color);
+            ctx.shadowBlur = (5 + p.sparkle * 12) * scale / 21;
+
+            ctx.fillStyle = rgb(color);
+            ctx.fillText(p.text, x, y);
+
+            ctx.shadowBlur = 0;
+        }
+
+        function animate(now) {
+            const elapsed = now - startTime;
+            const dt = Math.min(now - lastTime, 100);
+            lastTime = now;
+
+            ctx.fillStyle = BG;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.translate(width / 2, height / 2);
+
+            if (
+                elapsed > DURATION + ANIMATION_TIME &&
+                now - shimmerTime > 140 &&
+                words.length
+            ) {
+                const index = Math.floor(random() * words.length);
+                words[index].sparkle = 1;
+                shimmerTime = now;
+            }
+
+            for (const p of words) {
+                p.sparkle = Math.max(0, p.sparkle - dt / 260);
+                drawWord(p, elapsed);
+            }
+
+            ctx.restore();
+
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener("resize", resize);
+
+        resize();
+        requestAnimationFrame(animate);
+    </script>
+</body>
+
+</html>
