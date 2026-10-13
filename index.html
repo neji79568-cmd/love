@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Love Heart ❤️</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #060208;
+        }
+
+        body {
+            display: grid;
+            place-items: center;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100dvh;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="heart"></canvas>
+
+    <script>
+        const canvas = document.getElementById("heart");
+        const ctx = canvas.getContext("2d");
+
+        const BG = "#060208";
+        const DURATION = 10000;
+        const APPEAR = 650;
+
+        const phrases = [
+            "I love you", "Seni seviyorum", "Te amo",
+            "Je t'aime", "Ich liebe dich", "Ti amo",
+            "Eu te amo", "Я тебя люблю", "사랑해",
+            "愛してる", "我爱你", "मैं तुमसे प्यार करता हूँ",
+            "Σ' αγαπώ", "Ik hou van jou",
+            "Jag älskar dig", "Kocham cię",
+            "ฉันรักเธอ", "Anh yêu em",
+            "Aku cinta kamu", "Я тебе кохаю"
+        ];
+
+        let words = [];
+        let start = 0;
+        let scale = 1;
+        let width = 0;
+        let height = 0;
+
+        let seed = 11;
+        function random() {
+            seed = (1664525 * seed + 1013904223) >>> 0;
+            return seed / 4294967296;
+        }
+
+        function heart(t) {
+            return {
+                x: 16 * Math.sin(t) ** 3 * 21,
+                y: -(
+                    13 * Math.cos(t)
+                    - 5 * Math.cos(2 * t)
+                    - 2 * Math.cos(3 * t)
+                    - Math.cos(4 * t)
+                ) * 21 - 20
+            };
+        }
+
+        // 720 точек для точного контура
+        const polygon = Array.from({ length: 720 }, (_, i) =>
+            heart(i * Math.PI * 2 / 720)
+        );
+
+        // Находим горизонтальные участки внутри сердца
+        function spans(y) {
+            const xs = [];
+
+            for (let i = 0; i < polygon.length; i++) {
+                const a = polygon[i];
+                const b = polygon[(i + 1) % polygon.length];
+
+                if ((a.y <= y && y < b.y) ||
+                    (b.y <= y && y < a.y)) {
+                    xs.push(a.x + (y - a.y) *
+                        (b.x - a.x) / (b.y - a.y));
+                }
+            }
+
+            xs.sort((a, b) => a - b);
+
+            const result = [];
+            for (let i = 0; i + 1 < xs.length; i += 2) {
+                result.push([xs[i], xs[i + 1]]);
+            }
+            return result;
+        }
+
+        // Учитываем верх и низ текста
+        function safeSpans(y, half) {
+            const top = spans(y - half);
+            const bottom = spans(y + half);
+            const result = [];
+
+            for (const a of top) {
+                for (const b of bottom) {
+                    const left = Math.max(a[0], b[0]) + 4;
+                    const right = Math.min(a[1], b[1]) - 4;
+                    if (right - left > 15) {
+                        result.push([left, right]);
+                    }
+                }
+            }
+            return result;
+        }
+
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        function build() {
+            words = [];
+            let phraseOrder = shuffle([...phrases]);
+            let phraseIndex = 0;
+
+            function nextPhrase() {
+                if (phraseIndex >= phraseOrder.length) {
+                    phraseOrder = shuffle([...phrases]);
+                    phraseIndex = 0;
+                }
+                return phraseOrder[phraseIndex++];
+            }
+
+            const minY = Math.min(...polygon.map(p => p.y));
+            const maxY = Math.max(...polygon.map(p => p.y));
+            const rowHeight = 18;
+            const half = rowHeight / 2;
+
+            for (
+                let y = minY + half;
+                y < maxY - half;
+                y += rowHeight
+            ) {
+                const intervals = safeSpans(y, half);
+
+                for (const [left, right] of intervals) {
+                    const line = [];
+                    let cursor = left;
+
+                    // Заполняем строку подходящими фразами
+                    while (cursor < right) {
+                        let choice = null;
+
+                        for (let attempt = 0; attempt < 24; attempt++) {
+                            const text = nextPhrase();
+                            const size = 9 + Math.floor(random() * 4);
+
+                            ctx.font = `bold ${size}px Arial, sans-serif`;
+                            const w = ctx.measureText(text).width;
+
+                            if (cursor + w <= right) {
+                                choice = { text, size, w };
+                                break;
+                            }
+                        }
+
+                        if (!choice) break;
+
+                        line.push({
+                            x: cursor + choice.w / 2,
+                            y,
+                            ...choice
+                        });
+
+                        cursor += choice.w + 7;
+                    }
+
+                    if (!line.length) continue;
+
+                    // Распределяем слова по всей ширине строки
+                    const first = line[0];
+                    const last = line[line.length - 1];
+
+                    const usedLeft = first.x - first.w / 2;
+                    const usedRight = last.x + last.w / 2;
+                    const usedWidth = usedRight - usedLeft;
+                    const available = right - left;
+
+                    if (line.length === 1) {
+                        first.x = (left + right) / 2;
+                    } else {
+                        const extra = available - usedWidth;
+
+                        line.forEach((p, i) => {
+                            p.x += left - usedLeft +
+                                extra * i / (line.length - 1);
+                        });
+                    }
+
+                    line.forEach((p, i) => {
+                        const edge = i === 0 || i === line.length - 1;
+                        const radius = Math.min(1, Math.hypot(
+                            p.x / 336,
+                            (p.y + 20) / 305
+                        ));
+
+                        const red = Math.floor(190 + 65 * radius);
+                        const green = Math.floor(random() * 18);
+                        const blue = Math.floor(22 + random() * 22);
+
+                        words.push({
+                            ...p,
+                            edge,
+                            radius,
+                            color: `rgb(${red},${green},${blue})`,
+                            dx: (random() - 0.5) * 20,
+                            phase: random() * Math.PI * 2,
+                            delay: 0
+                        });
+                    });
+                }
+            }
+
+            // Сначала появляется контур, затем середина
+            const edges = words.filter(w => w.edge);
+            const inner = words.filter(w => !w.edge);
+
+            edges.sort((a, b) =>
+                Math.atan2(a.x, -a.y) -
+                Math.atan2(b.x, -b.y)
+            );
+
+            inner.sort((a, b) =>
+                b.radius - a.radius + (random() - 0.5) * 0.08
+            );
+
+            words = [...edges, ...inner];
+
+            words.forEach((p, i) => {
+                p.delay = i / Math.max(1, words.length - 1)
+                    * DURATION;
+            });
+        }
+
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+
+            const dpr = Math.min(devicePixelRatio || 1, 2);
+
+            canvas.width = Math.round(width * dpr);
+            canvas.height = Math.round(height * dpr);
+
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+            // Одинаковая форма на ПК и телефоне
+            scale = Math.min(
+                width / 760,
+                height / 760
+            );
+
+            start = performance.now();
+        }
+
+        function animate(now) {
+            const elapsed = now - start;
+
+            ctx.fillStyle = BG;
+            ctx.fillRect(0, 0, width, height);
+
+            ctx.save();
+            ctx.translate(width / 2, height / 2);
+            ctx.scale(scale, scale);
+
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+
+            for (const p of words) {
+                const age = elapsed - p.delay;
+                if (age < 0) continue;
+
+                const u = Math.min(1, age / APPEAR);
+                const ease = 1 - Math.pow(1 - u, 3);
+
+                const x = p.x + p.dx * (1 - ease);
+                const y = p.y - 34 * (1 - ease);
+
+                let brightness = 1;
+
+                if (age > APPEAR) {
+                    const sparkle = Math.max(
+                        0,
+                        Math.sin(now / 500 + p.phase)
+                    );
+
+                    brightness += Math.pow(sparkle, 14) * 0.5;
+                }
+
+                ctx.globalAlpha = ease;
+                ctx.font = `bold ${p.size}px Arial, sans-serif`;
+
+                ctx.shadowColor = "#ff1744";
+                ctx.shadowBlur = 4 * brightness;
+
+                ctx.fillStyle = p.color;
+                ctx.fillText(p.text, x, y);
+
+                // Краткая вспышка при появлении
+                if (u > 0.55 && u < 1) {
+                    const flash = Math.sin(
+                        Math.PI * (u - 0.55) / 0.45
+                    );
+
+                    ctx.globalAlpha = flash * 0.65;
+                    ctx.shadowBlur = 10;
+                    ctx.fillStyle = "#ffd5da";
+                    ctx.fillText(p.text, x, y);
+                }
+            }
+
+            ctx.restore();
+            ctx.globalAlpha = 1;
+            ctx.shadowBlur = 0;
+
+            requestAnimationFrame(animate);
+        }
+
+        build();
+        resize();
+
+        window.addEventListener("resize", resize);
+        requestAnimationFrame(animate);
+    </script>
+</body>
+
+</html>
